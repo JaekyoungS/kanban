@@ -201,13 +201,14 @@ if (typeof document !== 'undefined') {
 
   async function getOrCreateBoard() {
     // 소유자 보드 조회
-    const { data: memberRows } = await sb
+    const { data: memberRows, error: memberErr } = await sb
       .from('board_members')
       .select('board_id')
       .eq('user_id', currentUser.id)
       .eq('role', 'owner')
       .limit(1);
 
+    if (memberErr) console.error('[getOrCreateBoard] board_members 조회 오류 (RLS 문제일 수 있음):', memberErr);
     if (memberRows && memberRows.length > 0) return memberRows[0].board_id;
 
     // 보드 생성
@@ -258,6 +259,7 @@ if (typeof document !== 'undefined') {
     if (!status) return;
     const { error } = await sb.from('cards').upsert({
       id:          card.id,
+      user_id:     currentUser.id,
       board_id:    currentBoardId,
       created_by:  currentUser.id,
       title:       card.title,
@@ -267,7 +269,7 @@ if (typeof document !== 'undefined') {
       due_date:    card.dueDate || null,
       tags:        card.tags || [],
       updated_at:  new Date().toISOString(),
-    });
+    }, { onConflict: 'id' });
     if (error) console.error('saveCard:', error);
   }
 
@@ -317,10 +319,7 @@ if (typeof document !== 'undefined') {
   }
 
   async function loadMembers() {
-    const { data, error } = await sb
-      .from('board_members')
-      .select('user_id, user_email, role')
-      .eq('board_id', currentBoardId);
+    const { data, error } = await sb.rpc('get_board_members', { p_board_id: currentBoardId });
     if (error) { console.error('loadMembers:', error); return []; }
     return data || [];
   }
