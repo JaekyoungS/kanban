@@ -237,6 +237,7 @@ if (typeof document !== 'undefined') {
       priority:    row.priority || 'medium',
       dueDate:     row.due_date || null,
       tags:        row.tags || [],
+      _persisted:  true,
     };
   }
 
@@ -257,20 +258,37 @@ if (typeof document !== 'undefined') {
   async function saveCard(card) {
     const status = findCardStatus(card.id);
     if (!status) return;
-    const { error } = await sb.from('cards').upsert({
-      id:          card.id,
-      user_id:     currentUser.id,
-      board_id:    currentBoardId,
-      created_by:  currentUser.id,
-      title:       card.title,
-      description: card.description,
-      status,
-      priority:    card.priority || 'medium',
-      due_date:    card.dueDate || null,
-      tags:        card.tags || [],
-      updated_at:  new Date().toISOString(),
-    }, { onConflict: 'id' });
-    if (error) console.error('saveCard:', error);
+
+    if (!card._persisted) {
+      const { error } = await sb.from('cards').insert({
+        id:          card.id,
+        user_id:     currentUser.id,
+        board_id:    currentBoardId,
+        created_by:  currentUser.id,
+        title:       card.title,
+        description: card.description,
+        status,
+        priority:    card.priority || 'medium',
+        due_date:    card.dueDate || null,
+        tags:        card.tags || [],
+        updated_at:  new Date().toISOString(),
+      });
+      if (error) { console.error('saveCard insert:', error); return; }
+      state[status] = state[status].map((c) =>
+        c.id === card.id ? { ...c, _persisted: true } : c
+      );
+    } else {
+      const { error } = await sb.from('cards').update({
+        title:       card.title,
+        description: card.description,
+        status,
+        priority:    card.priority || 'medium',
+        due_date:    card.dueDate || null,
+        tags:        card.tags || [],
+        updated_at:  new Date().toISOString(),
+      }).eq('id', card.id);
+      if (error) console.error('saveCard update:', error);
+    }
   }
 
   async function deleteCardRemote(cardId) {
